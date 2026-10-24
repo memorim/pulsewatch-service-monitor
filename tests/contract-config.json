@@ -1,0 +1,35 @@
+{
+  "databaseModule": "server.js",
+  "appModule": "server.js",
+  "endpoints": [
+    {
+      "path": "/api/health"
+    },
+    {
+      "path": "/api/overview"
+    },
+    {
+      "method": "post",
+      "path": "/api/monitors",
+      "status": 201,
+      "body": {
+        "name": "Contract monitor",
+        "url": "https://memorim.github.io/contract-check"
+      }
+    },
+    {
+      "method": "post",
+      "path": "/api/monitors",
+      "status": 400,
+      "body": {}
+    }
+  ],
+  "setup": {
+    "path": "/api/incidents",
+    "body": {
+      "title": "Contract event",
+      "detail": "Stored event for response contract",
+      "severity": "minor"
+    }
+  }
+}

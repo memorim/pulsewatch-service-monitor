@@ -1,0 +1,64 @@
+[
+  {
+    "method": "get",
+    "path": "/api/health",
+    "status": 200,
+    "body": {
+      "monitoring": "string",
+      "status": "string"
+    }
+  },
+  {
+    "method": "get",
+    "path": "/api/overview",
+    "status": 200,
+    "body": {
+      "history": [],
+      "incidents": [
+        {
+          "detail": "string",
+          "id": "number",
+          "monitor_id": "null",
+          "resolved_at": "string|null",
+          "severity": "string",
+          "started_at": "string",
+          "status": "string",
+          "title": "string"
+        }
+      ],
+      "monitors": [
+        {
+          "check_count": "number",
+          "enabled": "number",
+          "id": "number",
+          "last_checked": "string|null",
+          "name": "string",
+          "response_ms": "number|null",
+          "status": "string",
+          "status_source": "string",
+          "uptime": "number|null",
+          "url": "string"
+        }
+      ],
+      "overall": "string"
+    }
+  },
+  {
+    "method": "post",
+    "path": "/api/monitors",
+    "status": 201,
+    "body": {
+      "id": "number",
+      "name": "string",
+      "url": "string"
+    }
+  },
+  {
+    "method": "post",
+    "path": "/api/monitors",
+    "status": 400,
+    "body": {
+      "message": "string"
+    }
+  }
+]
