@@ -3,11 +3,13 @@
 Periodically check owned HTTP services and retain measured availability, latency and incident history.
 
 
-![Desktop interface](docs/desktop.png)
+![Current local desktop interface](docs/desktop.png)
 
-<img src="docs/mobile.png" width="320" alt="Mobile interface">
+<img src="docs/mobile.png" width="320" alt="Current local mobile interface">
 
-[Short interaction recording](docs/demo.gif)
+Screenshots were captured from the running local application with its bundled fixture data.
+
+[Earlier sandbox interaction recording](docs/demo.gif)
 
 ## Implemented
 

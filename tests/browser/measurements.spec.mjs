@@ -25,3 +25,29 @@ test('measured status and a single history point render without invented availab
   expect(Number(await page.locator('#latest-point').getAttribute('cx'))).toBeGreaterThan(399);
   await expect(page.locator('[data-history-time="0"]')).toHaveText(/\d{2}:\d{2}/);
 });
+
+test('status indicators distinguish failed, healthy and unmeasured targets', async ({
+  page,
+  request,
+}) => {
+  const data = await (await request.get('/api/overview')).json();
+  data.overall = 'down';
+  data.monitors[0].status = 'down';
+  data.monitors[2].status = 'operational';
+  await page.route('**/api/overview', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) }),
+  );
+  await page.goto('/');
+  await expect(page.locator('#overall')).toHaveText('Обнаружена недоступность');
+  const color = (state) =>
+    page
+      .locator(`.monitor.${state} .monitor-name > i`)
+      .first()
+      .evaluate((element) => getComputedStyle(element).backgroundColor);
+  const healthy = await color('operational'),
+    failed = await color('down'),
+    unknown = await color('unknown');
+  expect(failed).not.toBe(healthy);
+  expect(unknown).not.toBe(healthy);
+  expect(failed).not.toBe(unknown);
+});

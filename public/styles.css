@@ -265,6 +265,14 @@ main {
   background: var(--green);
   box-shadow: 0 0 0 5px #83f3a613;
 }
+.monitor.down .monitor-name > i {
+  background: #f07272;
+  box-shadow: 0 0 0 5px #f0727213;
+}
+.monitor.unknown .monitor-name > i {
+  background: #8b9692;
+  box-shadow: none;
+}
 .monitor.degraded .monitor-name > i {
   background: #e7b45d;
   box-shadow: 0 0 0 5px #e7b45d13;
