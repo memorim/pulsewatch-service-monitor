@@ -8,7 +8,7 @@ const {probe,publicAddress,targetUrl,checkMonitor,monitorRunner}=await import('.
 test('outbound target validation rejects private IPs, credentials, redirects and DNS rebinding',async()=>{
  for(const ip of ['127.0.0.1','10.1.1.1','169.254.169.254','192.168.1.1','100.64.0.1','224.0.0.1','::1','::ffff:127.0.0.1','fe80::1','fc00::1','2001:db8::1'])assert.equal(publicAddress(ip),false,ip);
  assert.equal(publicAddress('8.8.8.8'),true);assert.equal(publicAddress('2606:4700:4700::1111'),true);
- for(const url of ['http://memorim.github.io/','https://user:pass@memorim.github.io/','https://memorim.github.io:8443/','https://memorim.github.io/?token=x','https://not-owned.example/'])assert.throws(()=>targetUrl(url));
+ for(const url of ['ftp://memorim.github.io/','https://user:pass@memorim.github.io/','https://memorim.github.io:8443/','https://memorim.github.io/?token=x','https://not-owned.example/'])assert.throws(()=>targetUrl(url));
  await assert.rejects(()=>probe('https://memorim.github.io/',{resolve:async()=>[{address:'127.0.0.1',family:4}],request:()=>{throw new Error('must_not_connect');}}),/non_public_address/);
  let calls=0;
  await assert.rejects(()=>probe('https://memorim.github.io/',{resolve:async()=>[{address:'8.8.8.8',family:4}],request:(_url,options,callback)=>{calls++;options.lookup('ignored',{},(_error,address)=>assert.equal(address,'8.8.8.8'));const req=new EventEmitter();req.end=()=>callback({statusCode:302,headers:{location:'https://127.0.0.1/'},destroy(){}});return req;}}));assert.equal(calls,1);

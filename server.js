@@ -50,5 +50,5 @@ export function createApp(db=createDb(),{runner=monitorRunner(db)}={}){
 }
 if(process.env.NODE_ENV!=='test'){
  const db=createDb(),runner=monitorRunner(db,{intervalMs:Number(process.env.MONITOR_INTERVAL_SECONDS||60)*1000,retentionDays:Number(process.env.MONITOR_RETENTION_DAYS||30)}),server=createApp(db,{runner}).listen(Number(process.env.PORT||4400),'127.0.0.1',()=>{console.log('Pulsewatch: http://localhost:'+Number(process.env.PORT||4400));if(process.env.MONITOR_ENABLED!=='false')runner.start();});
- for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{runner.stop();server.close();});
+ let shuttingDown=false;for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{if(shuttingDown)return;shuttingDown=true;await Promise.all([runner.stop(),new Promise(resolve=>server.close(resolve))]);db.close();});
 }
