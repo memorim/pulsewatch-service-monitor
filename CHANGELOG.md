@@ -1,3 +1,13 @@
+# Changes
+
+## Unreleased — incident delivery and network boundaries
+
+- Separate URL/IP policy, pinned header-only transport and scheduling responsibilities.
+- Transactional incident outbox with leased, bounded HTTPS delivery and restart/shutdown checks.
+- Reject stale results from targets paused during an in-flight check.
+- Use check-success-rate wording; preserve API fields and existing measured history.
+- Local Host/origin policy and ESLint/Prettier CI gates.
+
 # Изменения
 
 ## 2.0.0 — 2026-10-24

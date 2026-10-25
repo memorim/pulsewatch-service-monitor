@@ -1,26 +1,169 @@
-const loadFeedback=document.createElement('p');loadFeedback.className='load-feedback';loadFeedback.setAttribute('role','status');loadFeedback.style.cssText='position:fixed;bottom:16px;left:16px;right:16px;z-index:9999;background:#fff8dd;color:#222;padding:12px 20px;margin:0;font:14px/1.5 system-ui;border-radius:8px';document.querySelector('main').prepend(loadFeedback);let lastLoadArgs=[];
-async function load(...args){lastLoadArgs=args;loadFeedback.hidden=false;loadFeedback.textContent='Загрузка данных…';try{await loadData(...args);loadFeedback.textContent='';loadFeedback.hidden=true;}catch(error){loadFeedback.textContent='Не удалось загрузить данные. ';const retry=document.createElement('button');retry.type='button';retry.textContent='Повторить загрузку';retry.onclick=()=>load(...lastLoadArgs);loadFeedback.append(retry);}}
-const escapeText=v=>String(v).replace(/[&<>"\']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "\'":"&#39;"}[c]));
-let data;
-async function loadData(){
- const response=await fetch('/api/overview');if(!response.ok)throw new Error('HTTP '+response.status);data=await response.json();
- document.querySelector('#overall').textContent=({operational:'Все проверенные сервисы доступны',degraded:'Повышенная задержка',down:'Обнаружена недоступность',unknown:'Ожидаем первые измерения'})[data.overall];
- const measured=data.monitors.filter(m=>m.enabled&&m.last_checked),times=measured.map(m=>m.response_ms).filter(v=>v!==null),count=data.monitors.reduce((n,m)=>n+m.check_count,0);
- document.querySelector('#average').textContent=times.length?Math.round(times.reduce((a,b)=>a+b,0)/times.length)+' ms':'—';
- document.querySelector('#uptime').textContent=count?(data.monitors.reduce((n,m)=>n+(m.uptime||0)*m.check_count,0)/count).toFixed(2)+'%':'—';
- document.querySelector('#online-count').textContent=measured.filter(m=>m.status==='operational').length;
- document.querySelector('#open-count').textContent=data.incidents.filter(i=>i.status!=='resolved').length;
- const latest=measured.map(m=>m.last_checked).sort().at(-1);document.querySelector('#last-check').textContent=latest?'Проверено · '+new Date(latest).toLocaleTimeString('ru-RU'):'Ожидание проверки';
- document.querySelector('#monitor-list').innerHTML=data.monitors.map(m=>`<article class="monitor ${m.status}"><div class="monitor-name"><i></i><span><b>${escapeText(m.name)}</b><small>${escapeText(m.url)}</small></span></div><span>${m.enabled?'Активен':'Приостановлен'}<small>${m.check_count} проверок</small></span><span>${m.response_ms===null?'—':m.response_ms+' ms'}<small>${m.uptime===null?'Нет измерений':m.uptime+'% успешных'}</small></span></article>`).join('');
- document.querySelector('#incident-list').innerHTML=data.incidents.length?data.incidents.map(i=>`<article class="incident ${i.status==='resolved'?'':'open'}"><time>${new Date(i.started_at).toLocaleString('ru-RU')}</time><div><h3>${escapeText(i.title)}</h3><p>${escapeText(i.detail)}</p>${i.resolved_at?'<small>Восстановлено '+new Date(i.resolved_at).toLocaleString('ru-RU')+'</small>':''}</div><span>${i.status==='resolved'?'Восстановлен':'Открыт'}</span></article>`).join(''):'<p>Инцидентов пока нет.</p>';
- const values=data.history.filter(h=>h.response_ms!==null),max=Math.max(1,...values.map(h=>h.response_ms)),end=Date.now(),start=end-12*3600000;
- const points=values.map(h=>[Math.max(0,Math.min(400,(Date.parse(h.checked_at)-start)/(end-start)*400)),150-h.response_ms/max*140]);document.querySelector('#measured-line').setAttribute('points',points.map(p=>p.join(',')).join(' '));
- const dot=document.querySelector('#latest-point');dot.setAttribute('visibility',points.length?'visible':'hidden');if(points.length){dot.setAttribute('cx',points.at(-1)[0]);dot.setAttribute('cy',points.at(-1)[1]);}
- document.querySelectorAll('[data-history-time]').forEach((label,i)=>label.textContent=new Date(start+(end-start)*i/3).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}));
- document.querySelector('#history-count').textContent=values.length+' точек на графике';document.querySelector('#latest-response').textContent=values.length?values.at(-1).response_ms+' ms':'—';
+const loadFeedback = document.createElement('p');
+loadFeedback.className = 'load-feedback';
+loadFeedback.setAttribute('role', 'status');
+loadFeedback.style.cssText =
+  'position:fixed;bottom:16px;left:16px;right:16px;z-index:9999;background:#fff8dd;color:#222;padding:12px 20px;margin:0;font:14px/1.5 system-ui;border-radius:8px';
+document.querySelector('main').prepend(loadFeedback);
+let lastLoadArgs = [];
+async function load(...args) {
+  lastLoadArgs = args;
+  loadFeedback.hidden = false;
+  loadFeedback.textContent = 'Загрузка данных…';
+  try {
+    await loadData(...args);
+    loadFeedback.textContent = '';
+    loadFeedback.hidden = true;
+  } catch (error) {
+    loadFeedback.textContent = 'Не удалось загрузить данные. ';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Повторить загрузку';
+    retry.onclick = () => load(...lastLoadArgs);
+    loadFeedback.append(retry);
+  }
 }
-document.querySelector('#check-now').onclick=async()=>{const button=document.querySelector('#check-now');button.disabled=true;try{const response=await fetch('/api/check',{method:'POST'});if(!response.ok)throw new Error((await response.json()).message);button.textContent='Проверка запущена';setTimeout(()=>{button.textContent='Проверить сейчас';button.disabled=false;void load();},15000);}catch(error){button.textContent=error.message;button.disabled=false;}};
-setInterval(()=>void load(),60000);
-const dialog=document.querySelector('dialog');document.querySelector('.add').onclick=()=>dialog.showModal();document.querySelector('.close').onclick=()=>dialog.close();document.querySelector('#monitor-form').onsubmit=async e=>{e.preventDefault();const d=new FormData(e.target);const response=await fetch('/api/monitors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:d.get('name'),url:d.get('url')})});if(!response.ok){const error=await response.json();window.alert(error.message||'Не удалось сохранить монитор');return}dialog.close();e.target.reset();load()};load();
+const escapeText = (v) =>
+  String(v).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+let data;
+async function loadData() {
+  const response = await fetch('/api/overview');
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  data = await response.json();
+  document.querySelector('#overall').textContent = {
+    operational: 'Все проверенные сервисы доступны',
+    degraded: 'Повышенная задержка',
+    down: 'Обнаружена недоступность',
+    unknown: 'Ожидаем первые измерения',
+  }[data.overall];
+  const measured = data.monitors.filter((m) => m.enabled && m.last_checked),
+    times = measured.map((m) => m.response_ms).filter((v) => v !== null),
+    count = data.monitors.reduce((n, m) => n + m.check_count, 0);
+  document.querySelector('#average').textContent = times.length
+    ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) + ' ms'
+    : '—';
+  document.querySelector('#uptime').textContent = count
+    ? (data.monitors.reduce((n, m) => n + (m.uptime || 0) * m.check_count, 0) / count).toFixed(2) +
+      '%'
+    : '—';
+  document.querySelector('#online-count').textContent = measured.filter(
+    (m) => m.status === 'operational',
+  ).length;
+  document.querySelector('#open-count').textContent = data.incidents.filter(
+    (i) => i.status !== 'resolved',
+  ).length;
+  const latest = measured
+    .map((m) => m.last_checked)
+    .sort()
+    .at(-1);
+  document.querySelector('#last-check').textContent = latest
+    ? 'Проверено · ' + new Date(latest).toLocaleTimeString('ru-RU')
+    : 'Ожидание проверки';
+  document.querySelector('#monitor-list').innerHTML = data.monitors
+    .map(
+      (m) =>
+        `<article class="monitor ${m.status}"><div class="monitor-name"><i></i><span><b>${escapeText(m.name)}</b><small>${escapeText(m.url)}</small></span></div><span>${m.enabled ? 'Активен' : 'Приостановлен'}<small>${m.check_count} проверок</small></span><span>${m.response_ms === null ? '—' : m.response_ms + ' ms'}<small>${m.uptime === null ? 'Нет измерений' : m.uptime + '% успешных'}</small></span></article>`,
+    )
+    .join('');
+  document.querySelector('#incident-list').innerHTML = data.incidents.length
+    ? data.incidents
+        .map(
+          (i) =>
+            `<article class="incident ${i.status === 'resolved' ? '' : 'open'}"><time>${new Date(i.started_at).toLocaleString('ru-RU')}</time><div><h3>${escapeText(i.title)}</h3><p>${escapeText(i.detail)}</p>${i.resolved_at ? '<small>Восстановлено ' + new Date(i.resolved_at).toLocaleString('ru-RU') + '</small>' : ''}</div><span>${i.status === 'resolved' ? 'Восстановлен' : 'Открыт'}</span></article>`,
+        )
+        .join('')
+    : '<p>Инцидентов пока нет.</p>';
+  const values = data.history.filter((h) => h.response_ms !== null),
+    max = Math.max(1, ...values.map((h) => h.response_ms)),
+    end = Date.now(),
+    start = end - 12 * 3600000;
+  const points = values.map((h) => [
+    Math.max(0, Math.min(400, ((Date.parse(h.checked_at) - start) / (end - start)) * 400)),
+    150 - (h.response_ms / max) * 140,
+  ]);
+  document
+    .querySelector('#measured-line')
+    .setAttribute('points', points.map((p) => p.join(',')).join(' '));
+  const dot = document.querySelector('#latest-point');
+  dot.setAttribute('visibility', points.length ? 'visible' : 'hidden');
+  if (points.length) {
+    dot.setAttribute('cx', points.at(-1)[0]);
+    dot.setAttribute('cy', points.at(-1)[1]);
+  }
+  document.querySelectorAll('[data-history-time]').forEach(
+    (label, i) =>
+      (label.textContent = new Date(start + ((end - start) * i) / 3).toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })),
+  );
+  document.querySelector('#history-count').textContent = values.length + ' точек на графике';
+  document.querySelector('#latest-response').textContent = values.length
+    ? values.at(-1).response_ms + ' ms'
+    : '—';
+}
+document.querySelector('#check-now').onclick = async () => {
+  const button = document.querySelector('#check-now');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/check', { method: 'POST' });
+    if (!response.ok) throw new Error((await response.json()).message);
+    button.textContent = 'Проверка запущена';
+    setTimeout(() => {
+      button.textContent = 'Проверить сейчас';
+      button.disabled = false;
+      void load();
+    }, 15000);
+  } catch (error) {
+    button.textContent = error.message;
+    button.disabled = false;
+  }
+};
+setInterval(() => void load(), 60000);
+const dialog = document.querySelector('dialog');
+document.querySelector('.add').onclick = () => dialog.showModal();
+document.querySelector('.close').onclick = () => dialog.close();
+document.querySelector('#monitor-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const d = new FormData(e.target);
+  const response = await fetch('/api/monitors', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: d.get('name'), url: d.get('url') }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    window.alert(error.message || 'Не удалось сохранить монитор');
+    return;
+  }
+  dialog.close();
+  e.target.reset();
+  load();
+};
+load();
 
-for(const form of document.querySelectorAll('form')){const submit=form.onsubmit;if(!submit)continue;form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button[type=submit],button.send,button:not([type])');if(button)button.disabled=true;try{await submit(event);}catch{let message=form.querySelector('[role=alert]');if(!message){message=document.createElement('p');message.setAttribute('role','alert');form.append(message);}message.textContent='Не удалось выполнить запрос. Повторите действие; введённые данные остаются в форме.';}finally{if(button)button.disabled=false;}};}
+for (const form of document.querySelectorAll('form')) {
+  const submit = form.onsubmit;
+  if (!submit) continue;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type=submit],button.send,button:not([type])');
+    if (button) button.disabled = true;
+    try {
+      await submit(event);
+    } catch {
+      let message = form.querySelector('[role=alert]');
+      if (!message) {
+        message = document.createElement('p');
+        message.setAttribute('role', 'alert');
+        form.append(message);
+      }
+      message.textContent =
+        'Не удалось выполнить запрос. Повторите действие; введённые данные остаются в форме.';
+    } finally {
+      if (button) button.disabled = false;
+    }
+  };
+}
