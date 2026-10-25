@@ -1,2 +1,128 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Pulsewatch — мониторинг сервисов и инцидентов"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="styles.css"><title>Pulsewatch — service monitoring</title></head><body>
-<div role="note" style="padding:9px 16px;background:#222;color:#fff;font:12px/1.5 system-ui;text-align:center">Интерактивная демонстрация проекта</div><header><a class="logo"><i>⌁</i>pulsewatch</a><nav><a class="active">Dashboard</a><a>Incidents</a><a>Team</a></nav><button class="add">＋ Add monitor</button><span class="avatar">RS</span></header><main><section class="hero"><div><small>SYSTEM STATUS</small><h1>Everything,<br><em>almost</em> under control.</h1><p>Monitor services, catch incidents early<br>and keep the team in sync.</p></div><div class="radar"><i></i><i></i><i></i><span><b id="online-count">0</b><small>services<br>online</small></span><b></b></div></section><section class="overview"><div class="overall"><span class="pulse"></span><div><small>CURRENT STATUS</small><strong id="overall">Checking systems…</strong></div><time id="last-check">Ожидание проверки</time></div><div class="stats"><article><small>AVERAGE UPTIME</small><strong id="uptime">—</strong><span>По истории проверок</span></article><article><small>AVG. RESPONSE</small><strong id="average">—</strong><span>Across all services</span></article><article><small>OPEN INCIDENTS</small><strong id="open-count">—</strong><span>Requires attention</span></article></div></section><section class="grid"><div class="panel services"><div class="panel-head"><div><small>MONITORS</small><h2>Service health</h2></div><button id="check-now">Проверить сейчас</button></div><div id="monitor-list"></div></div><div class="panel latency"><small>RESPONSE TIME</small><h2>Последние 12 часов</h2><div class="line-chart"><svg viewBox="0 0 400 160" preserveAspectRatio="none"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8affb0" stop-opacity=".35"/><stop offset="1" stop-color="#8affb0" stop-opacity="0"/></linearGradient></defs><polyline id="measured-line" class="line" points=""/><circle id="latest-point" r="3" fill="#8affb0" visibility="hidden"/></svg><span data-history-time="0"></span><span data-history-time="1"></span><span data-history-time="2"></span><span data-history-time="3"></span></div><div class="latency-foot"><span id="history-count">Нет измерений</span><strong id="latest-response">—<small>последнее среднее</small></strong></div></div></section><section class="panel incidents"><div class="panel-head"><div><small>EVENT LOG</small><h2>Recent incidents</h2></div><span>История событий</span></div><div id="incident-list"></div></section></main><dialog><form id="monitor-form"><button type="button" class="close">×</button><small>NEW MONITOR</small><h2>Watch a service</h2><label>Display name<input name="name" required placeholder="Payments API"></label><label>Endpoint URL<input name="url" required placeholder="https://api.example.com/health"></label><button class="submit">Start monitoring →</button></form></dialog><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Pulsewatch — мониторинг сервисов и инцидентов" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Pulsewatch — service monitoring</title>
+  </head>
+  <body>
+    <div
+      role="note"
+      style="
+        padding: 9px 16px;
+        background: #222;
+        color: #fff;
+        font: 12px/1.5 system-ui;
+        text-align: center;
+      "
+    >
+      Интерактивная демонстрация проекта
+    </div>
+    <header>
+      <a class="logo"><i>⌁</i>pulsewatch</a>
+      <nav><a class="active">Dashboard</a><a>Incidents</a><a>Team</a></nav>
+      <button class="add">＋ Add monitor</button><span class="avatar">RS</span>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <small>SYSTEM STATUS</small>
+          <h1>Everything,<br /><em>almost</em> under control.</h1>
+          <p>Monitor services, catch incidents early<br />and keep the team in sync.</p>
+        </div>
+        <div class="radar">
+          <i></i><i></i><i></i
+          ><span
+            ><b id="online-count">0</b><small>services<br />online</small></span
+          ><b></b>
+        </div>
+      </section>
+      <section class="overview">
+        <div class="overall">
+          <span class="pulse"></span>
+          <div><small>CURRENT STATUS</small><strong id="overall">Checking systems…</strong></div>
+          <time id="last-check">Ожидание проверки</time>
+        </div>
+        <div class="stats">
+          <article>
+            <small>CHECK SUCCESS RATE</small><strong id="uptime">—</strong
+            ><span>По истории проверок</span>
+          </article>
+          <article>
+            <small>AVG. RESPONSE</small><strong id="average">—</strong
+            ><span>Across all services</span>
+          </article>
+          <article>
+            <small>OPEN INCIDENTS</small><strong id="open-count">—</strong
+            ><span>Requires attention</span>
+          </article>
+        </div>
+      </section>
+      <section class="grid">
+        <div class="panel services">
+          <div class="panel-head">
+            <div>
+              <small>MONITORS</small>
+              <h2>Service health</h2>
+            </div>
+            <button id="check-now">Проверить сейчас</button>
+          </div>
+          <div id="monitor-list"></div>
+        </div>
+        <div class="panel latency">
+          <small>RESPONSE TIME</small>
+          <h2>Последние 12 часов</h2>
+          <div class="line-chart">
+            <svg viewBox="0 0 400 160" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#8affb0" stop-opacity=".35" />
+                  <stop offset="1" stop-color="#8affb0" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <polyline id="measured-line" class="line" points="" />
+              <circle id="latest-point" r="3" fill="#8affb0" visibility="hidden" /></svg
+            ><span data-history-time="0"></span><span data-history-time="1"></span
+            ><span data-history-time="2"></span><span data-history-time="3"></span>
+          </div>
+          <div class="latency-foot">
+            <span id="history-count">Нет измерений</span
+            ><strong id="latest-response">—<small>последнее среднее</small></strong>
+          </div>
+        </div>
+      </section>
+      <section class="panel incidents">
+        <div class="panel-head">
+          <div>
+            <small>EVENT LOG</small>
+            <h2>Recent incidents</h2>
+          </div>
+          <span>История событий</span>
+        </div>
+        <div id="incident-list"></div>
+      </section>
+    </main>
+    <dialog>
+      <form id="monitor-form">
+        <button type="button" class="close">×</button><small>NEW MONITOR</small>
+        <h2>Watch a service</h2>
+        <label>Display name<input name="name" required placeholder="Payments API" /></label
+        ><label
+          >Endpoint URL<input
+            name="url"
+            required
+            placeholder="https://api.example.com/health" /></label
+        ><button class="submit">Start monitoring →</button>
+      </form>
+    </dialog>
+    <script src="app.js"></script>
+  </body>
+</html>

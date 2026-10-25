@@ -1,3 +1,5 @@
+> Historical note: current network, sampling and webhook delivery behaviour is documented in [NETWORK_AND_DELIVERY.md](NETWORK_AND_DELIVERY.md) and the root README.
+
 # Pulsewatch — панель мониторинга сервисов
 
 Панель мониторинга API и веб-сервисов: текущий статус, время ответа, uptime и журнал инцидентов.

@@ -14,6 +14,7 @@ Periodically check owned HTTP services and retain measured availability, latency
 - Automatic HTTP/HTTPS checks and a rate-limited manual cycle.
 - Persisted check history, current status, response time and observed success ratio.
 - One incident after two consecutive failures; automatic resolution after recovery.
+- Optional durable webhook delivery for incident open/close events, with bounded retries.
 
 ## Stack and architecture
 
@@ -25,15 +26,18 @@ Scheduler --> Probe[Allowlist and DNS validation]
 Probe --> Socket[Pinned HTTP/HTTPS socket]
 Socket --> Tx[Check and incident transaction]
 Tx --> SQLite[(SQLite)]
+Tx --> Outbox[Atomic incident event outbox]
+Outbox --> Webhook[Leased dispatcher / pinned HTTPS webhook]
 SQLite --> Dashboard
 ```
 
 ## Technical mechanisms and security
 
-- `monitoring.js` validates the operator-owned hostname allowlist and every redirect. DNS results must be public addresses; the selected address is pinned into the actual socket lookup. HTTPS redirects cannot downgrade to HTTP.
-- DNS and HTTP work have bounded deadlines and an AbortSignal. The runner permits one active cycle and one outbound probe at a time; shutdown aborts and drains that cycle before closing SQLite.
+- `network-policy.js` validates the operator-owned hostname allowlist and every redirect. DNS results must be public addresses; the selected address is pinned into the actual socket lookup. HTTPS redirects cannot downgrade to HTTP.
+- `transport.js` shares DNS pinning between probes and webhook delivery. It retains no response body and limits response headers to 16 KiB. Probe chains have a 20-second deadline; individual DNS/HTTP stages also have limits. DNS and HTTP work have bounded deadlines and an AbortSignal. The runner permits one active cycle and one outbound probe at a time; shutdown aborts and drains that cycle before closing SQLite.
 - Intervals are constrained to 5 seconds–24 hours; retention to 1–365 days. Up to 30 targets are supported. The interval is a delay after a completed cycle, so slow targets extend the effective period.
-- A check, current monitor state and incident transition use one transaction. A failed database write cannot publish a partial status. Manual status values do not become measured history.
+- A check, current monitor state, incident transition and outbox event use one transaction. A failed write cannot publish a partial status. A target paused while its request is in flight cannot publish that late result. Manual values do not become measured history.
+- `notifications.js` claims events with SQLite leases and fencing tokens, sends at most one request at a time, and stops after five attempts. Open/close event keys are stable; delivery is at-least-once, so receivers should deduplicate `Idempotency-Key`. Webhooks require HTTPS, never follow redirects, and reuse DNS/public-address checks. Logs contain fixed error categories, never the URL, credential or arbitrary remote body.
 
 ## Local setup
 
@@ -58,6 +62,8 @@ SQLite is stored at `data/pulsewatch.db`. Initialization creates/migrates the sc
 ## Verification
 
 ```bash
+pnpm lint
+pnpm format:check
 pnpm test
 pnpm test:contract
 pnpm test:upgrade
@@ -68,14 +74,19 @@ pnpm audit --audit-level=high
 
 `tests/monitoring.test.js` and `tests/audit.test.js` use controlled resolver/request fixtures. They check DNS pinning, equivalent IPv6 notation, redirect policy, incident recovery, rollback, interval overflow, overlapping cycles and cancellation. They do not require public services to be reachable.
 
-CI installs locked dependencies and runs the configured checks; documentation checks also validate local links/images. Python dependency auditing uses `pip-audit --disable-pip --no-deps --strict -r requirements-lock.txt`. A passing scanner only reports known advisories at the time of the run.
+`tests/notifications.test.js` verifies atomic open/close events, restart recovery, five-attempt limits, shutdown, secret-safe logs and actual JSON delivery to a local mock through a test-only transport adapter. CI runs locked installation, lint/format, unit/API, contract/upgrade, browser checks and advisory scanning.
 
 ## Limits and next steps
 
 - This is an operator-owned local tool without user accounts, not an open URL-checking API. Bind/expose it only behind appropriate access control.
 - Only exact configured hostnames and standard HTTP/HTTPS ports are accepted. Credentials, query strings and fragments are rejected; special-purpose IP ranges are conservatively denied.
-- Latency is time to response headers, not a full browser load. Availability is the ratio of retained observations, not a time-weighted SLA. No external alert delivery is implemented.
+- Latency is time to response headers, not a full browser load. Availability is the ratio of retained observations, not a time-weighted SLA. The UI calls it **check success rate**; the API field `uptime` remains for compatibility.
+- The local API validates Host and write Origin. This is not user authentication. A public reverse proxy must add access control; configure one `APP_PUBLIC_ORIGIN` if needed.
+- Notifications are disabled unless `MONITOR_WEBHOOK_URL` is set. Existing incident history is not backfilled; events created after this schema upgrade are retained even while delivery is disabled. Enabling later drains that backlog. There is no retry/secret editor in the browser; configuration belongs to the operator.
+- Delivered/failed outbox records and incidents are retained; backups and long-term archival remain operator tasks. A crash after remote acceptance can cause a retry. Five exhausted attempts need operator review, not an infinite automatic loop.
 - Sequential probing intentionally limits concurrency. If target count or frequency grows, introduce a bounded worker pool rather than unbounded parallel requests.
+
+See [network and delivery guarantees](docs/NETWORK_AND_DELIVERY.md) for the trust boundary and failure semantics.
 
 ## Further documentation
 
