@@ -1,49 +1,37 @@
-# Pulsewatch — Service Monitor
+# Pulsewatch — мониторинг доступности сервисов
 
-Periodically check owned HTTP services and retain measured availability, latency and incident history.
+Периодические HTTP/HTTPS-проверки подконтрольных сервисов, время ответа, история инцидентов и доставка уведомлений.
 
 
-![Current local desktop interface](docs/desktop.png)
 
-<img src="docs/mobile.png" width="320" alt="Current local mobile interface">
+![Компьютерная версия](docs/desktop.png)
 
-Screenshots were captured from the running local application with its bundled fixture data.
+<img src="docs/mobile.png" width="320" alt="Мобильная версия">
 
-[Earlier sandbox interaction recording](docs/demo.gif)
+[Короткая демонстрация](docs/demo.gif)
 
-## Implemented
+## Возможности
 
-- Automatic HTTP/HTTPS checks and a rate-limited manual cycle.
-- Persisted check history, current status, response time and observed success ratio.
-- One incident after two consecutive failures; automatic resolution after recovery.
-- Optional durable webhook delivery for incident open/close events, with bounded retries.
+- Автоматические проверки и ручной запуск с ограничением частоты.
+- История ответов, текущий статус, задержка и доля успешных проверок.
+- Инцидент после двух последовательных сбоев и автоматическое закрытие после восстановления.
+- Необязательная доставка событий через постоянную очередь webhook с ограниченными повторами.
 
-## Stack and architecture
+## Стек и устройство
 
-JavaScript, Express, Zod, built-in Node SQLite and a static HTML/CSS interface.
+JavaScript, Express, Zod, встроенный SQLite в Node.js и интерфейс на HTML/CSS.
 
-```mermaid
-flowchart LR
-Scheduler --> Probe[Allowlist and DNS validation]
-Probe --> Socket[Pinned HTTP/HTTPS socket]
-Socket --> Tx[Check and incident transaction]
-Tx --> SQLite[(SQLite)]
-Tx --> Outbox[Atomic incident event outbox]
-Outbox --> Webhook[Leased dispatcher / pinned HTTPS webhook]
-SQLite --> Dashboard
-```
+## Ключевые решения
 
-## Technical mechanisms and security
+- `network-policy.js` проверяет настроенный владельцем список хостов, DNS и каждый редирект. Разрешены публичные адреса, выбранный IP закрепляется в сетевом соединении. Переход с HTTPS на HTTP запрещён.
+- `transport.js` применяется к проверкам и webhook: без сохранения тела ответа, заголовки до 16 KiB, общий срок цепочки до 20 секунд, отдельные таймауты DNS/HTTP и AbortSignal. Одновременно выполняется один цикл и один запрос. Завершение отменяет и дожидается цикла до закрытия БД.
+- Интервал — от 5 секунд до 24 часов, хранение — 1–365 дней, целей — до 30. Пауза отсчитывается после завершения цикла.
+- Ответ проверки, состояние сервиса, переход инцидента и outbox-событие записываются одной транзакцией. Результат запроса, поставленного на паузу во время выполнения, не публикуется.
+- `notifications.js` использует аренду и токены владения событиями, отправляет последовательно, прекращает попытки после пяти захватов. При потере подтверждения возможен дубль; получатель должен учитывать `Idempotency-Key`. Webhook допускает только HTTPS, без редиректов, с той же проверкой DNS/IP. В журналах нет адреса, секрета и произвольного внешнего тела.
 
-- `network-policy.js` validates the operator-owned hostname allowlist and every redirect. DNS results must be public addresses; the selected address is pinned into the actual socket lookup. HTTPS redirects cannot downgrade to HTTP.
-- `transport.js` shares DNS pinning between probes and webhook delivery. It retains no response body and limits response headers to 16 KiB. Probe chains have a 20-second deadline; individual DNS/HTTP stages also have limits. DNS and HTTP work have bounded deadlines and an AbortSignal. The runner permits one active cycle and one outbound probe at a time; shutdown aborts and drains that cycle before closing SQLite.
-- Intervals are constrained to 5 seconds–24 hours; retention to 1–365 days. Up to 30 targets are supported. The interval is a delay after a completed cycle, so slow targets extend the effective period.
-- A check, current monitor state, incident transition and outbox event use one transaction. A failed write cannot publish a partial status. A target paused while its request is in flight cannot publish that late result. Manual values do not become measured history.
-- `notifications.js` claims events with SQLite leases and fencing tokens, sends at most one request at a time, and stops after five claimed attempts. Open/close event keys are stable. A crash after receiver acceptance but before acknowledgement can cause duplicates, so receivers should deduplicate `Idempotency-Key`. Events can remain undelivered after the attempt limit and require explicit retry; eventual successful delivery is not guaranteed. Webhooks require HTTPS, never follow redirects, and reuse DNS/public-address checks. Logs contain fixed error categories, never the URL, credential or arbitrary remote body.
+## Локальный запуск
 
-## Local setup
-
-Node.js 24.18.0 and pnpm 11.7.0 (see version files).
+Node.js 24.18.0 и pnpm 11.7.0; версии закреплены в файлах проекта.
 
 ```bash
 npm install --global pnpm@11.7.0
@@ -51,17 +39,17 @@ pnpm install --frozen-lockfile
 pnpm start
 ```
 
-Open `http://localhost:4400`. For live UI development use `pnpm dev` where available. The API binds to `127.0.0.1` by default.
+Откройте `http://localhost:4400`. Сервер по умолчанию слушает 127.0.0.1. Для разработки доступен `pnpm dev`.
 
-## Configuration
+## Настройки
 
-Configure process environment variables using [.env.example](.env.example). `pnpm start` uses the process environment; it does not implicitly load that file. To load a copied `.env` explicitly, run `node --env-file=.env server.js`.
+Параметры перечислены в [.env.example](.env.example). `pnpm start` использует окружение процесса и не загружает файл автоматически. После копирования `.env` его можно загрузить явно: `node --env-file=.env server.js`.
 
-## Database and upgrades
+## Данные и обновления
 
-SQLite is stored at `data/pulsewatch.db`. Initialization creates/migrates the schema; sample rows are included for local use. Back up the database before upgrades. Do not remove the database as a migration step.
+SQLite хранится в `data/pulsewatch.db`. Инициализация создаёт или обновляет схему. Перед обновлением сохраните резервную копию; удалять БД вместо миграции не нужно.
 
-## Verification
+## Проверки
 
 ```bash
 pnpm lint
@@ -74,26 +62,19 @@ pnpm test:e2e
 pnpm audit --audit-level=high
 ```
 
-`tests/monitoring.test.js` and `tests/audit.test.js` use controlled resolver/request fixtures. They check DNS pinning, equivalent IPv6 notation, redirect policy, incident recovery, rollback, interval overflow, overlapping cycles and cancellation. They do not require public services to be reachable.
+Контролируемые сетевые заглушки проверяют DNS pinning, IPv6, редиректы, восстановление инцидента, откаты, интервалы и отмену. Отдельно проверяются аренда событий, перезапуск, лимит попыток, остановка и фактическая JSON-доставка локальному получателю.
 
-`tests/notifications.test.js` verifies atomic open/close events, restart recovery, five-attempt limits, shutdown, secret-safe logs and actual JSON delivery to a local mock through a test-only transport adapter. CI runs locked installation, lint/format, unit/API, contract/upgrade, browser checks and advisory scanning.
+CI устанавливает зависимости по зафиксированным версиям и запускает настроенные проверки. Отдельная проверка документации находит неверные локальные ссылки и изображения. Проверка уязвимостей учитывает известные проблемы на момент запуска.
 
-## Limits and next steps
+## Ограничения
 
-- This is an operator-owned local tool without user accounts, not an open URL-checking API. Bind/expose it only behind appropriate access control.
-- Only exact configured hostnames and standard HTTP/HTTPS ports are accepted. Credentials, query strings and fragments are rejected; special-purpose IP ranges are conservatively denied.
-- Latency is time to response headers, not a full browser load. Availability is the ratio of retained observations, not a time-weighted SLA. The UI calls it **check success rate**; the API field `uptime` remains for compatibility.
-- The local API validates Host and write Origin. This is not user authentication. A public reverse proxy must add access control; configure one `APP_PUBLIC_ORIGIN` if needed.
-- Notifications are disabled unless `MONITOR_WEBHOOK_URL` is set. Existing incident history is not backfilled; events created after this schema upgrade are retained even while delivery is disabled. Enabling later drains that backlog. There is no retry/secret editor in the browser; configuration belongs to the operator.
-- Delivered/failed outbox records and incidents are retained; backups and long-term archival remain operator tasks. A crash after remote acceptance can cause a retry. Five exhausted attempts need operator review, not an infinite automatic loop.
-- Sequential probing intentionally limits concurrency. If target count or frequency grows, introduce a bounded worker pool rather than unbounded parallel requests.
+- Локальный инструмент владельца без публичных аккаунтов; внешний доступ требует отдельного контроля доступа. Host/Origin сами по себе не являются аутентификацией.
+- Допускаются точные настроенные хосты и стандартные порты; реквизиты в URL, query и fragment запрещены, специальные IP-диапазоны отклоняются.
+- Задержка измеряется до заголовков ответа. Доступность — доля сохранённых наблюдений, а не временно взвешенный SLA. Поле API `uptime` сохранено для совместимости.
+- Уведомления включаются через `MONITOR_WEBHOOK_URL`. Старые инциденты до миграции не дополняются событиями; новые события накапливаются и при выключенной доставке.
+- После пяти попыток нужна явная повторная постановка. Успешная доставка не гарантирована; архивирование, резервные копии и обслуживание очереди относятся к задачам владельца.
+- Проверки выполняются последовательно. При росте числа целей понадобится ограниченный пул исполнителей.
 
-See [network and delivery guarantees](docs/NETWORK_AND_DELIVERY.md) for the trust boundary and failure semantics.
+## Документация
 
-## Further documentation
-
-[Audit findings and follow-up](docs/AUDIT_2026_10.md) · [Technical reference](docs/TECHNICAL.md) · [Change history](CHANGELOG.md)
-
-[API request/response example](docs/API_EXAMPLE.md)
-
-[Revision and deployment checks](docs/DEPLOYMENT_CHECKS.md) — read-only `pnpm smoke` verifies a running Node API and an optional expected source SHA.
+[Результаты аудита](docs/AUDIT_2026_10.md) · [Техническая документация](docs/TECHNICAL.md) · [Пример запроса и ответа](docs/API_EXAMPLE.md) · [Проверка версии размещения](docs/DEPLOYMENT_CHECKS.md) · [Сетевые ограничения и доставка](docs/NETWORK_AND_DELIVERY.md) · [История изменений](CHANGELOG.md)
