@@ -1,0 +1,75 @@
+{
+  "/api/overview": {
+    "overall": "operational",
+    "monitors": [
+      {
+        "id": 1,
+        "name": "Flowboard",
+        "url": "https://memorim.github.io/flowboard-project-manager/",
+        "enabled": 1,
+        "status_source": "probe",
+        "status": "operational",
+        "response_ms": 1673,
+        "last_checked": "2026-10-26T17:08:28.887197+00:00",
+        "uptime": 100,
+        "check_count": 1
+      },
+      {
+        "id": 2,
+        "name": "Seatly",
+        "url": "https://memorim.github.io/seatly-workspace-booking/",
+        "enabled": 1,
+        "status_source": "probe",
+        "status": "operational",
+        "response_ms": 348,
+        "last_checked": "2026-10-26T17:08:29.256146+00:00",
+        "uptime": 100,
+        "check_count": 1
+      },
+      {
+        "id": 3,
+        "name": "Flowboard API",
+        "url": "https://memorim-flowboard-live.amusedcorgi34.chatgpt.site/api/health",
+        "enabled": 1,
+        "status_source": "probe",
+        "status": "operational",
+        "response_ms": 3927,
+        "last_checked": "2026-10-26T17:08:33.754785+00:00",
+        "uptime": 100,
+        "check_count": 1
+      },
+      {
+        "id": 4,
+        "name": "Seatly API",
+        "url": "https://memorim-flowboard-live.amusedcorgi34.chatgpt.site/api/seatly/health",
+        "enabled": 1,
+        "status_source": "probe",
+        "status": "operational",
+        "response_ms": 527,
+        "last_checked": "2026-10-26T17:08:34.300222+00:00",
+        "uptime": 100,
+        "check_count": 1
+      }
+    ],
+    "incidents": [],
+    "history": [
+      {
+        "checked_at": "2026-10-26T17:08:28.887197+00:00",
+        "response_ms": 1673
+      },
+      {
+        "checked_at": "2026-10-26T17:08:29.256146+00:00",
+        "response_ms": 348
+      },
+      {
+        "checked_at": "2026-10-26T17:08:33.754785+00:00",
+        "response_ms": 3927
+      },
+      {
+        "checked_at": "2026-10-26T17:08:34.300222+00:00",
+        "response_ms": 527
+      }
+    ]
+  },
+  "captured_at": "2026-10-26T17:08:34.300222+00:00"
+}

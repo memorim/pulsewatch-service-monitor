@@ -14,18 +14,6 @@
     <title>Pulsewatch — service monitoring</title>
   </head>
   <body>
-    <div
-      role="note"
-      style="
-        padding: 9px 16px;
-        background: #222;
-        color: #fff;
-        font: 12px/1.5 system-ui;
-        text-align: center;
-      "
-    >
-      Интерактивная демонстрация проекта
-    </div>
     <header>
       <a class="logo"><i>⌁</i>pulsewatch</a>
       <nav><a class="active">Dashboard</a><a>Incidents</a><a>Team</a></nav>
@@ -38,11 +26,15 @@
           <h1>Everything,<br /><em>almost</em> under control.</h1>
           <p>Monitor services, catch incidents early<br />and keep the team in sync.</p>
         </div>
-        <div class="radar">
-          <i></i><i></i><i></i
-          ><span
-            ><b id="online-count">0</b><small>services<br />online</small></span
-          ><b></b>
+        <div class="service-visual">
+          <img
+            src="photos/hero.webp"
+            alt="Серверные стойки в центре обработки данных"
+            width="1440"
+            height="958"
+            fetchpriority="high"
+          />
+          <div class="service-caption"><b id="online-count">0</b><span>services online</span></div>
         </div>
       </section>
       <section class="overview">
