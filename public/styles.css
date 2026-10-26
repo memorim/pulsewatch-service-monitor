@@ -105,62 +105,6 @@ main {
   color: #78827b;
   font: 400 9px/1.6 Space Mono;
 }
-.radar {
-  position: relative;
-  width: 280px;
-  height: 280px;
-  border: 1px solid #2d3e34;
-  border-radius: 50%;
-}
-.radar:before,
-.radar:after {
-  content: '';
-  position: absolute;
-  border: 1px solid #26342c;
-  border-radius: 50%;
-  inset: 45px;
-}
-.radar:after {
-  inset: 90px;
-  background: #111a14;
-}
-.radar > i {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  border-left: 1px solid #233129;
-}
-.radar > i:nth-child(2) {
-  transform: rotate(60deg);
-}
-.radar > i:nth-child(3) {
-  transform: rotate(-60deg);
-}
-.radar span {
-  position: absolute;
-  z-index: 2;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font: 700 33px Space Mono;
-  color: var(--green);
-  text-align: center;
-}
-.radar span small {
-  display: block;
-  font-size: 5px;
-}
-.radar b {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 50%;
-  height: 50%;
-  transform-origin: 0 0;
-  background: linear-gradient(35deg, #75ef9e30, transparent 70%);
-  animation: scan 4s linear infinite;
-}
 @keyframes scan {
   to {
     transform: rotate(360deg);
@@ -495,11 +439,6 @@ dialog input {
   .hero h1 {
     font-size: 43px;
   }
-  .radar {
-    position: absolute;
-    right: -150px;
-    opacity: 0.45;
-  }
   .stats {
     grid-template-columns: 1fr;
   }
@@ -536,5 +475,81 @@ dialog input {
   }
   header .avatar {
     display: none;
+  }
+}
+
+.service-visual {
+  position: relative;
+  flex: 0 1 44%;
+  height: 285px;
+  margin-left: 28px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #13221a;
+}
+.service-visual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.service-caption {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 18px;
+  border: 1px solid #ffffff30;
+  border-radius: 10px;
+  background: #081710dd;
+  color: #e0ffeb;
+}
+.service-caption b {
+  font:
+    700 30px 'Space Mono',
+    monospace;
+}
+.service-caption span {
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .hero {
+    display: grid;
+    gap: 24px;
+    min-height: 0;
+    margin-bottom: 28px;
+  }
+  .hero h1 {
+    font-size: clamp(38px, 9vw, 54px);
+    line-height: 1;
+  }
+  .hero p {
+    font-size: 12px;
+  }
+  .service-visual {
+    margin: 0;
+    height: auto;
+    aspect-ratio: 16/9;
+  }
+  .monitor {
+    gap: 12px;
+  }
+  .monitor-name {
+    min-width: 0;
+  }
+  .monitor-name small {
+    overflow-wrap: anywhere;
+  }
+  .overall {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .overall time {
+    margin-left: 0;
+  }
+  .add {
+    margin-right: 0;
   }
 }
