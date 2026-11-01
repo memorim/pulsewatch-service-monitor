@@ -2,7 +2,7 @@ const loadFeedback = document.createElement('p');
 loadFeedback.className = 'load-feedback';
 loadFeedback.setAttribute('role', 'status');
 loadFeedback.style.cssText =
-  'position:fixed;bottom:16px;left:16px;right:16px;z-index:9999;background:#fff8dd;color:#222;padding:12px 20px;margin:0;font:14px/1.5 system-ui;border-radius:8px';
+  'position:fixed;bottom:16px;left:16px;right:16px;z-index:9999;background:#e6f5fb;color:#091724;padding:12px 20px;margin:0;font:14px/1.5 system-ui;border-radius:8px';
 document.querySelector('main').prepend(loadFeedback);
 let lastLoadArgs = [];
 async function load(...args) {
