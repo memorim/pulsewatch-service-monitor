@@ -141,3 +141,17 @@ export function notificationRunner(
     },
   };
 }
+
+export function retryFailedNotification(db, id, now = Date.now()) {
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error('Invalid event id');
+  // Compare-and-set: delivered, pending and leased events cannot be requeued.
+  return (
+    db
+      .prepare(
+        `UPDATE notification_outbox SET attempts=0,failed_at=NULL,
+    next_attempt_at=?,lease_until=0,lease_token=NULL,last_error=NULL
+    WHERE id=? AND failed_at IS NOT NULL AND delivered_at IS NULL AND lease_until<=?`,
+      )
+      .run(now, id, now).changes === 1
+  );
+}

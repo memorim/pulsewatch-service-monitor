@@ -266,3 +266,33 @@ test('webhook URL/DNS checks reject non-public, malformed and mixed DNS answers 
     );
   }
 });
+
+test('manual retry requeues only failed events while preserving the deduplication key', async () => {
+  const { retryFailedNotification } = await import('../notifications.js');
+  const db = createDb(':memory:');
+  try {
+    db.prepare(
+      "INSERT INTO incidents(title,detail,severity,status,started_at) VALUES('Retry test','Detail','major','investigating',?)",
+    ).run(new Date().toISOString());
+    const event = db.prepare('SELECT * FROM notification_outbox LIMIT 1').get();
+    assert.equal(retryFailedNotification(db, event.id), false);
+    db.prepare('UPDATE notification_outbox SET attempts=5,failed_at=? WHERE id=?').run(
+      new Date().toISOString(),
+      event.id,
+    );
+    assert.equal(retryFailedNotification(db, event.id), true);
+    const retried = db.prepare('SELECT * FROM notification_outbox WHERE id=?').get(event.id);
+    assert.equal(retried.event_key, event.event_key);
+    assert.equal(retried.attempts, 0);
+    assert.equal(retried.failed_at, null);
+    assert.equal(retryFailedNotification(db, event.id), false);
+    db.prepare('UPDATE notification_outbox SET failed_at=?,delivered_at=? WHERE id=?').run(
+      'now',
+      'now',
+      event.id,
+    );
+    assert.equal(retryFailedNotification(db, event.id), false);
+  } finally {
+    db.close();
+  }
+});
