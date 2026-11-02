@@ -4,7 +4,7 @@
 
 - `network-policy.js`: operator hostname allowlist, URL canonicalization and conservative public-IP policy.
 - `transport.js`: bounded resolution, validated address pinning and header-only HTTP transport with cancellation. No shared connection pool can bypass a fresh DNS check.
-- `monitoring.js`: redirect policy, check persistence, two-failure incident transitions and sequential scheduling.
+- `monitoring.js`: redirect policy, check persistence, two-failure incident transitions and bounded concurrent scheduling (4 workers by default, configurable from 1 to 16).
 - `notifications.sql`: outbox events in the same transaction as incident changes.
 - `notifications.js`: operator-only webhook configuration, fenced delivery claims and limited retries.
 

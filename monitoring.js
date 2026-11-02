@@ -82,8 +82,14 @@ export async function checkMonitor(
   }
   return result;
 }
-export function monitorRunner(db, { check = probe, intervalMs = 60000, retentionDays = 30 } = {}) {
+export function monitorRunner(
+  db,
+  { check = probe, intervalMs = 60000, retentionDays = 30, concurrency = 4 } = {},
+) {
   if (
+    !Number.isInteger(concurrency) ||
+    concurrency < 1 ||
+    concurrency > 16 ||
     !Number.isFinite(intervalMs) ||
     intervalMs < 5000 ||
     intervalMs > 86400000 ||
@@ -103,13 +109,19 @@ export function monitorRunner(db, { check = probe, intervalMs = 60000, retention
     running = true;
     active = (async () => {
       try {
-        // ponytail: sequential probes bound outbound concurrency to one; use a bounded pool if target count grows beyond 30.
-        for (const monitor of db
-          .prepare('SELECT * FROM monitors WHERE enabled=1 ORDER BY id')
-          .all()) {
-          if (stopped) break;
-          await checkMonitor(db, monitor, { check, signal: controller.signal });
-        }
+        const monitors = db.prepare('SELECT * FROM monitors WHERE enabled=1 ORDER BY id').all();
+        let cursor = 0;
+        // Drain every worker before releasing the cycle lock, including on failure.
+        const results = await Promise.allSettled(
+          Array.from({ length: Math.min(concurrency, monitors.length) }, async () => {
+            while (!stopped && cursor < monitors.length) {
+              const monitor = monitors[cursor++];
+              await checkMonitor(db, monitor, { check, signal: controller.signal });
+            }
+          }),
+        );
+        const failed = results.find((result) => result.status === 'rejected');
+        if (failed) throw failed.reason;
         db.prepare('DELETE FROM checks WHERE checked_at<?').run(
           new Date(Date.now() - retentionDays * 86400000).toISOString(),
         );

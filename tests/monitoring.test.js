@@ -144,3 +144,33 @@ test('a paused target cannot publish a late in-flight probe result', async () =>
     db.close();
   }
 });
+
+test('bounded pool checks targets concurrently and drains before shutdown', async () => {
+  const db = createDb(':memory:');
+  let active = 0,
+    peak = 0,
+    calls = 0;
+  const runner = monitorRunner(db, {
+    concurrency: 2,
+    check: async () => {
+      active++;
+      calls++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active--;
+      return { ok: true, statusCode: 200, responseMs: 1, error: null };
+    },
+  });
+  try {
+    await runner.run();
+    assert.equal(calls, 4);
+    assert.equal(peak, 2);
+    assert.equal(active, 0);
+    assert.throws(() => monitorRunner(db, { concurrency: 0 }));
+    assert.throws(() => monitorRunner(db, { concurrency: 17 }));
+    await runner.stop();
+    assert.equal(await runner.run(), false);
+  } finally {
+    db.close();
+  }
+});
