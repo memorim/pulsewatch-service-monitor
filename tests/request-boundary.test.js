@@ -32,13 +32,19 @@ test('configured proxy host is explicit and origin validation fails closed', asy
     assert.throws(() => operatorBoundary({ APP_PUBLIC_ORIGIN: origin }));
   const { default: express } = await import('express');
   const app = express();
-  app.use(operatorBoundary({ APP_PUBLIC_ORIGIN: 'https://operator.example' }));
+  app.use(
+    operatorBoundary({
+      APP_PUBLIC_ORIGIN: 'https://operator.example',
+      APP_OPERATOR_TOKEN: 'a'.repeat(40),
+    }),
+  );
   app.post('/write', (_req, res) => res.sendStatus(204));
   assert.equal(
     (
       await request(app)
         .post('/write')
         .set('Host', 'operator.example')
+        .auth('operator', 'a'.repeat(40))
         .set('Origin', 'https://operator.example')
     ).status,
     204,
@@ -53,4 +59,35 @@ test('configured proxy host is explicit and origin validation fails closed', asy
     403,
   );
   assert.equal((await request(app).post('/write').set('Host', '127.0.0.1')).status, 403);
+});
+
+test('public access challenges browsers and rejects wrong credentials', async () => {
+  const { default: express } = await import('express');
+  assert.throws(() => operatorBoundary({ APP_PUBLIC_ORIGIN: 'https://operator.example' }));
+  assert.throws(() =>
+    operatorBoundary({
+      APP_PUBLIC_ORIGIN: 'http://operator.example',
+      APP_OPERATOR_TOKEN: 'a'.repeat(40),
+    }),
+  );
+  const app = express();
+  app.use(
+    operatorBoundary({
+      APP_PUBLIC_ORIGIN: 'https://operator.example',
+      APP_OPERATOR_TOKEN: 'a'.repeat(40),
+    }),
+  );
+  app.get('/', (_req, res) => res.send('dashboard'));
+  const out = await request(app).get('/').set('Host', 'operator.example');
+  assert.equal(out.status, 401);
+  assert.match(out.headers['www-authenticate'], /Basic/);
+  assert.equal(
+    (await request(app).get('/').set('Host', 'operator.example').auth('operator', 'wrong')).status,
+    401,
+  );
+  assert.equal(
+    (await request(app).get('/').set('Host', 'operator.example').auth('operator', 'a'.repeat(40)))
+      .status,
+    200,
+  );
 });

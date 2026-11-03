@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 // Local operator apps have no account boundary; a public reverse proxy must add authentication.
 export function operatorBoundary(env = process.env) {
   let configured;
@@ -13,6 +14,12 @@ export function operatorBoundary(env = process.env) {
     )
       throw new Error('APP_PUBLIC_ORIGIN must be an HTTP(S) origin');
   }
+  const secret = env.APP_OPERATOR_TOKEN;
+  if (configured && (!secret || secret.length < 32))
+    throw new Error('Public access requires APP_OPERATOR_TOKEN of at least 32 characters');
+  if (configured && configured.protocol !== 'https:')
+    throw new Error('Public access requires an HTTPS origin');
+  const hash = (value) => createHash('sha256').update(value).digest();
   return (req, res, next) => {
     let authority;
     try {
@@ -39,6 +46,21 @@ export function operatorBoundary(env = process.env) {
         (req.get('origin') && req.get('origin') !== expected)
       )
         return res.status(403).json({ message: 'Cross-origin writes are not allowed' });
+    }
+    if (configured) {
+      const header = req.get('authorization') || '';
+      let supplied = '';
+      if (header.length <= 1024 && header.startsWith('Basic ')) {
+        const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+        if (decoded.startsWith('operator:')) supplied = decoded.slice(9);
+      }
+      if (!timingSafeEqual(hash(supplied), hash(secret)))
+        return res
+          .set('WWW-Authenticate', 'Basic realm="Pulsewatch", charset="UTF-8"')
+          .set('Cache-Control', 'no-store')
+          .status(401)
+          .json({ message: 'Authentication required' });
+      res.set('Cache-Control', 'no-store');
     }
     next();
   };
