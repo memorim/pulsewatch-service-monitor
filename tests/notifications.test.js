@@ -13,6 +13,57 @@ const config = webhookConfig({
   MONITOR_WEBHOOK_URL: 'https://notify.example/events',
   MONITOR_WEBHOOK_TOKEN: 'fixture-only-token',
 });
+
+test('ntfy posts generic metadata through the pinned HTTPS transport', async () => {
+  const ntfy = webhookConfig({ NTFY_TOPIC: 'a'.repeat(48) });
+  const received = [];
+  const server = http
+    .createServer(async (req, res) => {
+      let body = '';
+      for await (const data of req) body += data;
+      received.push({ body, headers: req.headers });
+      res.writeHead(200);
+      res.end('{}');
+    })
+    .listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    await sendWebhook(
+      ntfy,
+      {
+        event_key: 'incident:42:opened',
+        payload: JSON.stringify({ detail: 'Private description', url: 'https://private.example' }),
+      },
+      {
+        resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+        request: (url, options, callback) => {
+          assert.equal(url.href, 'https://ntfy.sh/');
+          options.lookup('ignored', {}, (_error, address) => assert.equal(address, '8.8.8.8'));
+          return http.request(
+            {
+              host: '127.0.0.1',
+              port: server.address().port,
+              method: options.method,
+              headers: options.headers,
+              signal: options.signal,
+            },
+            callback,
+          );
+        },
+      },
+    );
+    assert.equal(JSON.parse(received[0].body).topic, 'a'.repeat(48));
+    assert.ok(!received[0].body.includes('Private'));
+    assert.ok(!received[0].body.includes('private.example'));
+    assert.equal(received[0].headers.authorization, undefined);
+    assert.throws(() => webhookConfig({ NTFY_TOPIC: 'short' }));
+    assert.throws(() =>
+      webhookConfig({ NTFY_TOPIC: 'a'.repeat(48), MONITOR_WEBHOOK_URL: 'https://example.com' }),
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 function incident(db) {
   return Number(
     db

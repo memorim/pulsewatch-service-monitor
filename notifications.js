@@ -3,6 +3,12 @@ import { targetUrl } from './network-policy.js';
 import { pinnedRequest } from './transport.js';
 
 export function webhookConfig(env = process.env) {
+  if (env.NTFY_TOPIC) {
+    if (env.MONITOR_WEBHOOK_URL) throw new Error('Choose ntfy or the monitor webhook');
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(env.NTFY_TOPIC))
+      throw new Error('Use a random ntfy topic of 32–128 safe characters');
+    return { kind: 'ntfy', url: new URL('https://ntfy.sh/'), topic: env.NTFY_TOPIC };
+  }
   if (!env.MONITOR_WEBHOOK_URL) return null;
   const parsed = new URL(env.MONITOR_WEBHOOK_URL);
   const url = targetUrl(parsed.href, new Set([parsed.hostname]));
@@ -14,13 +20,21 @@ export function webhookConfig(env = process.env) {
 
 export async function sendWebhook(config, row, options = {}) {
   if (Buffer.byteLength(row.payload) > 4096) throw new Error('payload_limit');
+  const body =
+    config.kind === 'ntfy'
+      ? JSON.stringify({
+          topic: config.topic,
+          title: 'Pulsewatch',
+          message: 'Monitoring event: ' + row.event_key,
+        })
+      : row.payload;
   const response = await pinnedRequest(config.url, {
     ...options,
     method: 'POST',
-    body: row.payload,
+    body,
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': String(Buffer.byteLength(row.payload)),
+      'Content-Length': String(Buffer.byteLength(body)),
       'Idempotency-Key': row.event_key,
       ...(config.token ? { Authorization: `Bearer ${config.token}` } : {}),
     },
