@@ -1,5 +1,6 @@
 import { notificationRunner, webhookConfig } from './notifications.js';
 import { operatorBoundary } from './request-policy.js';
+import { dataDirectory, listenHost } from './storage.js';
 import express from 'express';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { targetUrl, monitorRunner, defaultHosts } from './monitoring.js';
 const root = dirname(fileURLToPath(import.meta.url));
-export function createDb(file = resolve(root, 'data', 'pulsewatch.db')) {
+export function createDb(file = resolve(dataDirectory(), 'pulsewatch.db')) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   try {
@@ -212,6 +213,7 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
   return app;
 }
 if (process.env.NODE_ENV !== 'test') {
+  const host = listenHost();
   const configuration = webhookConfig();
   const db = createDb(),
     notifications = notificationRunner(db, { config: configuration }),
@@ -219,8 +221,8 @@ if (process.env.NODE_ENV !== 'test') {
       intervalMs: Number(process.env.MONITOR_INTERVAL_SECONDS || 60) * 1000,
       retentionDays: Number(process.env.MONITOR_RETENTION_DAYS || 30),
     }),
-    server = createApp(db, { runner }).listen(Number(process.env.PORT || 4400), '127.0.0.1', () => {
-      console.log('Pulsewatch: http://localhost:' + Number(process.env.PORT || 4400));
+    server = createApp(db, { runner }).listen(Number(process.env.PORT || 4400), host, () => {
+      console.log('Pulsewatch listening on configured host and port');
       if (process.env.MONITOR_ENABLED !== 'false') runner.start();
       notifications.start();
     });
