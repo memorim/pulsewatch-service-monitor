@@ -1,3 +1,5 @@
+import { writeTransaction } from './postgres.js';
+import { randomUUID } from 'node:crypto';
 import { allowedHosts, targetUrl } from './network-policy.js';
 import { pinnedRequest } from './transport.js';
 export { allowedHosts, targetUrl, publicAddress, defaultHosts } from './network-policy.js';
@@ -45,41 +47,41 @@ export async function checkMonitor(
     };
   }
   const state = result.ok ? (result.responseMs > 1000 ? 'degraded' : 'operational') : 'down';
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const current = db.prepare('SELECT enabled,url FROM monitors WHERE id=?').get(monitor.id);
-    if (!current?.enabled || current.url !== monitor.url) {
-      db.exec('ROLLBACK');
-      return result;
-    }
-    db.prepare(
-      'INSERT INTO checks(monitor_id,checked_at,ok,status_code,response_ms,error) VALUES(?,?,?,?,?,?)',
-    ).run(monitor.id, now, Number(result.ok), result.statusCode, result.responseMs, result.error);
-    db.prepare(
-      "UPDATE monitors SET status=?,response_ms=?,last_checked=?,status_source='probe' WHERE id=?",
-    ).run(state, result.responseMs, now, monitor.id);
-    const recent = db
+  await writeTransaction(db, async () => {
+    const current = await db.prepare('SELECT enabled,url FROM monitors WHERE id=?').get(monitor.id);
+    if (!current?.enabled || current.url !== monitor.url) return;
+    await db
+      .prepare(
+        'INSERT INTO checks(monitor_id,checked_at,ok,status_code,response_ms,error) VALUES(?,?,?,?,?,?)',
+      )
+      .run(monitor.id, now, Number(result.ok), result.statusCode, result.responseMs, result.error);
+    await db
+      .prepare(
+        "UPDATE monitors SET status=?,response_ms=?,last_checked=?,status_source='probe' WHERE id=?",
+      )
+      .run(state, result.responseMs, now, monitor.id);
+    const recent = await db
       .prepare('SELECT ok FROM checks WHERE monitor_id=? ORDER BY id DESC LIMIT 2')
       .all(monitor.id);
     if (!result.ok && recent.length === 2 && recent.every((r) => !r.ok))
-      db.prepare(
-        "INSERT INTO incidents(title,detail,severity,status,started_at,monitor_id) SELECT ?,?,'major','investigating',?,? WHERE NOT EXISTS(SELECT 1 FROM incidents WHERE monitor_id=? AND status!='resolved')",
-      ).run(
-        'Сервис недоступен: ' + monitor.name,
-        'Две последовательные проверки завершились ошибкой.',
-        now,
-        monitor.id,
-        monitor.id,
-      );
+      await db
+        .prepare(
+          "INSERT INTO incidents(title,detail,severity,status,started_at,monitor_id) SELECT ?,?,'major','investigating',?,? WHERE NOT EXISTS(SELECT 1 FROM incidents WHERE monitor_id=? AND status!='resolved')",
+        )
+        .run(
+          'Сервис недоступен: ' + monitor.name,
+          'Две последовательные проверки завершились ошибкой.',
+          now,
+          monitor.id,
+          monitor.id,
+        );
     if (result.ok)
-      db.prepare(
-        "UPDATE incidents SET status='resolved',resolved_at=? WHERE monitor_id=? AND status!='resolved'",
-      ).run(now, monitor.id);
-    db.exec('COMMIT');
-  } catch (error) {
-    if (db.isTransaction) db.exec('ROLLBACK');
-    throw error;
-  }
+      await db
+        .prepare(
+          "UPDATE incidents SET status='resolved',resolved_at=? WHERE monitor_id=? AND status!='resolved'",
+        )
+        .run(now, monitor.id);
+  });
   return result;
 }
 export function monitorRunner(
@@ -108,8 +110,21 @@ export function monitorRunner(
     if (running || stopped) return Promise.resolve(false);
     running = true;
     active = (async () => {
+      const token = randomUUID();
+      let leased = false;
       try {
-        const monitors = db.prepare('SELECT * FROM monitors WHERE enabled=1 ORDER BY id').all();
+        if (db.dialect === 'postgres') {
+          const lease = await db
+            .prepare(
+              "INSERT INTO cycle_leases(name,token,lease_until) VALUES('monitoring',?,?) ON CONFLICT(name) DO UPDATE SET token=excluded.token,lease_until=excluded.lease_until WHERE cycle_leases.lease_until<=? RETURNING token",
+            )
+            .get(token, Date.now() + 300000, Date.now());
+          if (lease?.token !== token) return false;
+          leased = true;
+        }
+        const monitors = await db
+          .prepare('SELECT * FROM monitors WHERE enabled=1 ORDER BY id')
+          .all();
         let cursor = 0;
         // Drain every worker before releasing the cycle lock, including on failure.
         const results = await Promise.allSettled(
@@ -122,15 +137,22 @@ export function monitorRunner(
         );
         const failed = results.find((result) => result.status === 'rejected');
         if (failed) throw failed.reason;
-        db.prepare('DELETE FROM checks WHERE checked_at<?').run(
-          new Date(Date.now() - retentionDays * 86400000).toISOString(),
-        );
+        await db
+          .prepare('DELETE FROM checks WHERE checked_at<?')
+          .run(new Date(Date.now() - retentionDays * 86400000).toISOString());
         return true;
       } catch (error) {
         if (!controller.signal.aborted) throw error;
         return false;
       } finally {
-        running = false;
+        try {
+          if (leased)
+            await db
+              .prepare("DELETE FROM cycle_leases WHERE name='monitoring' AND token=?")
+              .run(token);
+        } finally {
+          running = false;
+        }
       }
     })();
     return active;

@@ -1,3 +1,4 @@
+import { createPostgresDb, writeTransaction } from './postgres.js';
 import { notificationRunner, webhookConfig } from './notifications.js';
 import { operatorBoundary } from './request-policy.js';
 import { dataDirectory, listenHost } from './storage.js';
@@ -60,13 +61,19 @@ export function createDb(file = resolve(dataDirectory(), 'pulsewatch.db')) {
     throw error;
   }
 }
+export async function openDatabase(env = process.env) {
+  return env.DATABASE_URL
+    ? createPostgresDb(env.DATABASE_URL, { seed: () => createDb(':memory:') })
+    : createDb();
+}
 const monitorSchema = z
   .object({ name: z.string().trim().min(2).max(80), url: z.string().trim().min(4).max(1000) })
   .strict();
 export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) {
   const app = express();
-  const revision = /^[a-f0-9]{40}$/i.test(process.env.APP_REVISION || '')
-    ? process.env.APP_REVISION
+  const suppliedRevision = process.env.RENDER_GIT_COMMIT || process.env.APP_REVISION;
+  const revision = /^[a-f0-9]{40}$/i.test(suppliedRevision || '')
+    ? suppliedRevision
     : 'local-unversioned';
   app.use('/api/health', (_req, res, next) => {
     res.set('X-App-Revision', revision);
@@ -75,24 +82,26 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
 
   app.use(operatorBoundary());
   app.use(express.json({ limit: '16kb' }));
-  app.get('/api/health', (_req, res) =>
-    res.json({ status: 'ok', monitoring: runner.running ? 'checking' : 'idle' }),
-  );
-  app.get('/api/overview', (_req, res) => {
-    const monitors = db
+  app.get('/api/health', async (_req, res) => {
+    await db.prepare('SELECT 1 ready').get();
+    res.json({ status: 'ok', monitoring: runner.running ? 'checking' : 'idle' });
+  });
+  app.get('/api/overview', async (_req, res) => {
+    const monitors = await db
       .prepare(
         `SELECT m.id,m.name,m.url,m.enabled,m.status_source,CASE WHEN m.status_source='probe' AND m.last_checked IS NOT NULL THEN m.status ELSE 'unknown' END status,CASE WHEN m.status_source='probe' THEN m.response_ms ELSE NULL END response_ms,CASE WHEN m.status_source='probe' THEN m.last_checked ELSE NULL END last_checked,(SELECT ROUND(100.0*SUM(ok)/COUNT(*),2) FROM checks WHERE monitor_id=m.id) uptime,(SELECT COUNT(*) FROM checks WHERE monitor_id=m.id) check_count FROM monitors m ORDER BY m.id`,
       )
       .all();
-    const incidents = db
+    const incidents = await db
       .prepare('SELECT * FROM incidents ORDER BY started_at DESC LIMIT 100')
       .all();
-    const history = db
-      .prepare(
-        'SELECT MAX(checked_at) checked_at,ROUND(AVG(response_ms)) response_ms FROM checks WHERE checked_at>=? GROUP BY substr(checked_at,1,16) ORDER BY checked_at DESC LIMIT 60',
-      )
-      .all(new Date(Date.now() - 12 * 3600000).toISOString())
-      .reverse();
+    const history = (
+      await db
+        .prepare(
+          'SELECT MAX(checked_at) checked_at,ROUND(AVG(response_ms)) response_ms FROM checks WHERE checked_at>=? GROUP BY substr(checked_at,1,16) ORDER BY MAX(checked_at) DESC LIMIT 60',
+        )
+        .all(new Date(Date.now() - 12 * 3600000).toISOString())
+    ).reverse();
     const observed = monitors.filter((m) => m.enabled && m.last_checked),
       overall = observed.some((m) => m.status === 'down')
         ? 'down'
@@ -103,7 +112,7 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
             : 'unknown';
     res.json({ overall, monitors, incidents, history });
   });
-  app.post('/api/monitors', (req, res) => {
+  app.post('/api/monitors', async (req, res) => {
     const parsed = monitorSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: 'Проверьте название и HTTPS-адрес' });
@@ -113,16 +122,19 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
     } catch (e) {
       return res.status(400).json({ message: e.message });
     }
-    if (db.prepare('SELECT COUNT(*) n FROM monitors').get().n >= 30)
-      return res.status(409).json({ message: 'Доступно до 30 целей мониторинга' });
-    if (db.prepare('SELECT id FROM monitors WHERE url=? AND enabled=1').get(url))
-      return res.status(409).json({ message: 'Эта цель уже добавлена' });
-    const result = db
-      .prepare(
-        "INSERT INTO monitors(name,url,status,enabled,status_source) VALUES(?,?,'unknown',1,'probe')",
-      )
-      .run(parsed.data.name, url);
-    res.status(201).json({ id: Number(result.lastInsertRowid), ...parsed.data, url });
+    const result = await writeTransaction(db, async () => {
+      if ((await db.prepare('SELECT COUNT(*) n FROM monitors').get()).n >= 30)
+        return { status: 409, body: { message: 'Доступно до 30 целей мониторинга' } };
+      if (await db.prepare('SELECT id FROM monitors WHERE url=? AND enabled=1').get(url))
+        return { status: 409, body: { message: 'Эта цель уже добавлена' } };
+      const inserted = await db
+        .prepare(
+          "INSERT INTO monitors(name,url,status,enabled,status_source) VALUES(?,?,'unknown',1,'probe')",
+        )
+        .run(parsed.data.name, url);
+      return { status: 201, body: { id: Number(inserted.lastInsertRowid), ...parsed.data, url } };
+    });
+    res.status(result.status).json(result.body);
   });
   let lastManual = 0;
   app.post('/api/check', (_req, res) => {
@@ -138,7 +150,7 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
     res.status(202).json({ status: 'started' });
   });
   // Retained for API compatibility: manual values never become measured history or availability statistics.
-  app.patch('/api/monitors/:id', (req, res) => {
+  app.patch('/api/monitors/:id', async (req, res) => {
     const p = z
       .object({
         status: z.enum(['operational', 'degraded', 'down']),
@@ -147,7 +159,7 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
       .strict()
       .safeParse(req.body);
     if (!p.success) return res.status(400).json({ message: 'Неверные данные проверки' });
-    const out = db
+    const out = await db
       .prepare(
         "UPDATE monitors SET status=?,response_ms=?,status_source='manual',enabled=0 WHERE id=?",
       )
@@ -156,10 +168,10 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
       ? res.json({ ok: true })
       : res.status(404).json({ message: 'Монитор не найден' });
   });
-  app.patch('/api/monitors/:id/enabled', (req, res) => {
+  app.patch('/api/monitors/:id/enabled', async (req, res) => {
     const p = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
     if (!p.success) return res.status(400).json({ message: 'Укажите enabled' });
-    const m = db.prepare('SELECT url FROM monitors WHERE id=?').get(Number(req.params.id));
+    const m = await db.prepare('SELECT url FROM monitors WHERE id=?').get(Number(req.params.id));
     if (!m) return res.status(404).json({ message: 'Монитор не найден' });
     if (p.data.enabled) {
       try {
@@ -168,13 +180,12 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
         return res.status(400).json({ message: 'Домен должен быть разрешён владельцем сервера' });
       }
     }
-    db.prepare('UPDATE monitors SET enabled=? WHERE id=?').run(
-      Number(p.data.enabled),
-      Number(req.params.id),
-    );
+    await db
+      .prepare('UPDATE monitors SET enabled=? WHERE id=?')
+      .run(Number(p.data.enabled), Number(req.params.id));
     res.json({ ok: true });
   });
-  app.post('/api/incidents', (req, res) => {
+  app.post('/api/incidents', async (req, res) => {
     const p = z
       .object({
         title: z.string().trim().min(4).max(160),
@@ -184,21 +195,21 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
       .strict()
       .safeParse(req.body);
     if (!p.success) return res.status(400).json({ message: 'Заполните данные инцидента' });
-    const result = db
+    const result = await db
       .prepare(
         "INSERT INTO incidents(title,detail,severity,status,started_at) VALUES(?,?,?,'investigating',?)",
       )
       .run(p.data.title, p.data.detail, p.data.severity, new Date().toISOString());
     res.status(201).json({ id: Number(result.lastInsertRowid) });
   });
-  app.patch('/api/incidents/:id/resolve', (req, res) => {
-    const result = db
+  app.patch('/api/incidents/:id/resolve', async (req, res) => {
+    const result = await db
       .prepare(
         "UPDATE incidents SET status='resolved',resolved_at=? WHERE id=? AND status!='resolved'",
       )
       .run(new Date().toISOString(), Number(req.params.id));
     return result.changes ||
-      db.prepare('SELECT id FROM incidents WHERE id=?').get(Number(req.params.id))
+      (await db.prepare('SELECT id FROM incidents WHERE id=?').get(Number(req.params.id)))
       ? res.json({ ok: true })
       : res.status(404).json({ message: 'Инцидент не найден' });
   });
@@ -207,7 +218,7 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
   app.use((error, _req, res, _next) => {
     const status =
       error?.type === 'entity.too.large' ? 413 : error instanceof SyntaxError ? 400 : 503;
-    if (status === 503) console.error({ event: 'request_error', error: String(error) });
+    if (status === 503) console.error({ event: 'request_error', error: 'database_unavailable' });
     res.status(status).json({ message: 'Не удалось обработать запрос' });
   });
   return app;
@@ -215,7 +226,7 @@ export function createApp(db = createDb(), { runner = monitorRunner(db) } = {}) 
 if (process.env.NODE_ENV !== 'test') {
   const host = listenHost();
   const configuration = webhookConfig();
-  const db = createDb(),
+  const db = await openDatabase(),
     notifications = notificationRunner(db, { config: configuration }),
     runner = monitorRunner(db, {
       intervalMs: Number(process.env.MONITOR_INTERVAL_SECONDS || 60) * 1000,
@@ -223,8 +234,18 @@ if (process.env.NODE_ENV !== 'test') {
     }),
     server = createApp(db, { runner }).listen(Number(process.env.PORT || 4400), host, () => {
       console.log('Pulsewatch listening on configured host and port');
-      if (process.env.MONITOR_ENABLED !== 'false') runner.start();
-      notifications.start();
+      // Free external PostgreSQL should sleep between scheduled Function invocations.
+      const backgroundDefault = db.dialect !== 'postgres';
+      if (
+        process.env.MONITOR_ENABLED === 'true' ||
+        (backgroundDefault && process.env.MONITOR_ENABLED !== 'false')
+      )
+        runner.start();
+      if (
+        process.env.MONITOR_NOTIFICATIONS_ENABLED === 'true' ||
+        (backgroundDefault && process.env.MONITOR_NOTIFICATIONS_ENABLED !== 'false')
+      )
+        notifications.start();
     });
   let shuttingDown = false;
   for (const signal of ['SIGINT', 'SIGTERM'])
@@ -236,6 +257,6 @@ if (process.env.NODE_ENV !== 'test') {
         notifications.stop(),
         new Promise((resolve) => server.close(resolve)),
       ]);
-      db.close();
+      await db.close();
     });
 }
