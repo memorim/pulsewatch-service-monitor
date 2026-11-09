@@ -1,0 +1,11 @@
+{
+  "slug": "monitoring",
+  "runtime": "nodejs24",
+  "artifact": ".neon-build/monitoring.zip",
+  "trigger": {
+    "name": "pulsewatch-monitoring",
+    "function_path": "/cron",
+    "type": "schedule",
+    "schedule": { "cron": "*/15 * * * *" }
+  }
+}
