@@ -6,6 +6,7 @@ export default [
   {
     ignores: [
       'node_modules/**',
+      '.neon-build/**',
       'dist/**',
       '_site/**',
       'dist-*/**',
