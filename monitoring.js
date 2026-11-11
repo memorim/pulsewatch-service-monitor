@@ -43,7 +43,24 @@ export async function checkMonitor(
       ok: false,
       statusCode: null,
       responseMs: null,
-      error: error?.message === 'non_public_address' ? 'non_public_address' : 'network_error',
+      error:
+        error?.message === 'non_public_address'
+          ? 'non_public_address'
+          : [
+                'ENOTFOUND',
+                'EAI_AGAIN',
+                'ECONNREFUSED',
+                'ECONNRESET',
+                'ETIMEDOUT',
+                'ENETUNREACH',
+                'EHOSTUNREACH',
+                'CERT_HAS_EXPIRED',
+                'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+              ].includes(error?.code)
+            ? error.code
+            : error?.name === 'TimeoutError' || error?.name === 'AbortError'
+              ? 'timeout'
+              : 'network_error',
     };
   }
   const state = result.ok ? (result.responseMs > 1000 ? 'degraded' : 'operational') : 'down';
