@@ -2,6 +2,7 @@ import { isIP } from 'node:net';
 
 export const defaultHosts = [
   'memorim.github.io',
+  'memorim-flowboard.onrender.com',
   'memorim-flowboard-live.amusedcorgi34.chatgpt.site',
 ];
 export const allowedHosts = () =>

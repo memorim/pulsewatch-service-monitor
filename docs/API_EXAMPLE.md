@@ -37,7 +37,7 @@ GET /api/overview
     {
       "id": 3,
       "name": "Flowboard API",
-      "url": "https://memorim-flowboard-live.amusedcorgi34.chatgpt.site/api/health",
+      "url": "https://memorim-flowboard.onrender.com/api/health",
       "enabled": 1,
       "status_source": "probe",
       "status": "unknown",
