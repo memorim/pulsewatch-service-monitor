@@ -5,13 +5,18 @@ export const defaultHosts = [
   'memorim-flowboard.onrender.com',
   'memorim-flowboard-live.amusedcorgi34.chatgpt.site',
 ];
-export const allowedHosts = () =>
-  new Set(
+export const allowedHosts = () => {
+  const hosts = new Set(
     (process.env.MONITOR_ALLOWED_HOSTS || defaultHosts.join(','))
       .split(',')
       .map((h) => h.trim().toLowerCase())
       .filter(Boolean),
   );
+  // Preserve explicit legacy deployment configuration during the Flowboard move.
+  if (hosts.has('memorim-flowboard-live.amusedcorgi34.chatgpt.site'))
+    hosts.add('memorim-flowboard.onrender.com');
+  return hosts;
+};
 export function targetUrl(value, hosts = allowedHosts()) {
   const url = new URL(value.includes('://') ? value : 'https://' + value);
   if (
