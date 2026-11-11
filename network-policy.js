@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 export const defaultHosts = [
   'memorim.github.io',
   'memorim-flowboard.onrender.com',
+  'br-icy-rice-b9bzez7t-seatly.compute.c-7.eu-central-1.aws.neon.tech',
   'memorim-flowboard-live.amusedcorgi34.chatgpt.site',
 ];
 export const allowedHosts = () => {
@@ -13,8 +14,10 @@ export const allowedHosts = () => {
       .filter(Boolean),
   );
   // Preserve explicit legacy deployment configuration during the Flowboard move.
-  if (hosts.has('memorim-flowboard-live.amusedcorgi34.chatgpt.site'))
+  if (hosts.has('memorim-flowboard-live.amusedcorgi34.chatgpt.site')) {
     hosts.add('memorim-flowboard.onrender.com');
+    hosts.add('br-icy-rice-b9bzez7t-seatly.compute.c-7.eu-central-1.aws.neon.tech');
+  }
   return hosts;
 };
 export function targetUrl(value, hosts = allowedHosts()) {
